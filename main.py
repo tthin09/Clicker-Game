@@ -9,7 +9,6 @@ from characters.target import Target
 from characters.menu import Menu
 from characters.button import Button
 
-
     
 class Game:
     def __init__(self, window):
