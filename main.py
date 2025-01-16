@@ -1,224 +1,15 @@
 import pygame
 import numpy as np
 import math
+from constants.screen import FPS, WIDTH, HEIGHT
+from constants.utils import FONT_NAME, RED, WHITE, BLACK, CREAM, BACKGROUND_COLOR
+from constants.game import APPEAR_TIME, MAX_RADIUS, CIRCLE_NUM, RISING_SPEED
+from constants.state import State
+from characters.target import Target
+from characters.menu import Menu
+from characters.button import Button
 
-# screen
-FPS = 60
-RATIO = 16/9
-WIDTH = 1200
-HEIGHT = WIDTH / RATIO
-FONT_NAME = "comicsans"
 
-# color
-RED = (255, 0, 0)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-CREAM = (255, 245, 208)
-BACKGROUND_COLOR = (32, 32, 32)
-
-# circle (appear_time in second, 0.01 being error)
-APPEAR_TIME = 1.25
-MAX_RADIUS = 75
-CIRCLE_NUM = 7
-RISING_SPEED = MAX_RADIUS / ((APPEAR_TIME - 0.01) * 30)
-
-class Target:
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.radius = 0
-        self.rising = True
-        self.center = self.getRandomPosition()
-
-        self.appearing = True
-        self.first_appear_time = pygame.time.get_ticks()
-        self.appear_time = pygame.time.get_ticks()
-
-        self.intervals = []
-        self.hit_time = []
-        self.raw_hit_time = []
-    
-    def getRandomPosition(self):
-        x = np.random.randint(MAX_RADIUS + 10, WIDTH - MAX_RADIUS - 10)
-        y = np.random.randint(MAX_RADIUS + 10 + 50, HEIGHT - MAX_RADIUS - 10)
-        return (x, y)
-    
-    def resetPosition(self):
-        current_time = pygame.time.get_ticks()
-        # done an interval -> reappear
-        interval = current_time - self.appear_time
-        if interval >= APPEAR_TIME * 1000:
-            if not self.appearing:
-                self.first_appear_time = pygame.time.get_ticks()
-            self.appearing = True
-            self.appear_time = pygame.time.get_ticks()
-            self.center = self.getRandomPosition()
-            self.radius = 0
-            self.rising = True
-
-            self.intervals.append(interval)
-            return True
-        return False
-
-    def update(self):
-        if self.radius > MAX_RADIUS:
-            self.rising = False
-        elif self.radius < 0:
-            self.resetPosition()
-        if self.appearing:
-            if self.rising:
-                self.radius += RISING_SPEED
-            else:
-                self.radius -= RISING_SPEED
-    
-    def draw(self):
-        if self.appearing:
-            for i in range(CIRCLE_NUM, 0, -1):
-                current_radius = self.radius * i / CIRCLE_NUM
-                current_color = RED if i % 2 == 1 else WHITE
-                pygame.draw.circle(screen, current_color, self.center, current_radius)
-
-    def checkClick(self, click_pos):
-        x, y = click_pos
-        distance = math.sqrt(math.pow(x - self.center[0], 2) + math.pow(y - self.center[1], 2)) + 1
-        if (distance <= self.radius):
-            self.radius = -10
-            self.rising = False
-            self.appearing = False
-            self.hit_time.append(pygame.time.get_ticks() - self.appear_time)
-            self.raw_hit_time.append(pygame.time.get_ticks() - self.first_appear_time)
-            print(f"Hit! - {self.raw_hit_time[-1]/1000:.3f}s")
-            return 1
-        else:
-            print("Miss")
-            return 0
-        
-    def updatePauseTime(self, pause_interval):
-        self.appear_time += pause_interval
-        self.first_appear_time += pause_interval
-
-class Button:
-    def __init__(self, window, text, corner, size, state):
-        self.window = window
-        self.text = text
-        self.corner = corner
-        self.width = size[0]
-        self.height = size[1]
-        self.state = state
-
-    def draw(self):
-        font = pygame.font.SysFont(FONT_NAME, 46, True, False)
-        text_draw = font.render(self.text, 1, WHITE)
-        # draw button
-        pygame.draw.rect(self.window, WHITE, (self.corner[0], self.corner[1], self.width, self.height), width=5)
-        pygame.draw.rect(self.window, BLACK, (self.corner[0] + 5, self.corner[1] + 5, self.width - 10, self.height - 10))
-        # text
-        text_rect = text_draw.get_rect()
-        self.window.blit(text_draw, (self.corner[0] + self.width/2 - text_rect.width/2, self.corner[1] + self.height/2 - text_rect.height/2))
-
-    def checkClick(self, click_pos):
-        if (self.corner[0] <= click_pos[0] <= self.corner[0] + self.width) and (self.corner[1] <= click_pos[1] <= self.corner[1] + self.height):
-            return self.state
-        return None
-
-class Menu:
-    def __init__(self, window):
-        self.window = window
-        self.font = pygame.font.SysFont(FONT_NAME, 30, True, False)
-        self.font_bigger = pygame.font.SysFont(FONT_NAME, 46, True, False)
-        self.state = State.MENU
-        self.running = False
-
-        self.menu_buttons = []
-        self.rules_buttons = []
-        self.createButtons()
-
-    def createButtons(self):
-        width = 200
-        height = 100
-        self.menu_buttons.append(Button(self.window, "Play", (WIDTH/2 - width/2, HEIGHT/2 - 50 - height), (width, height), State.GAME))
-        self.menu_buttons.append(Button(self.window, "Rules", (WIDTH/2 - width/2, HEIGHT/2 + 50), (width, height), State.RULES))
-
-        self.rules_buttons.append(Button(self.window, "X", (20, 20), (70, 70), State.MENU))
-
-    def drawAll(self):
-        self.window.fill(BACKGROUND_COLOR)
-        if self.state == State.MENU:
-            for button in self.menu_buttons:
-                button.draw()
-        elif self.state == State.RULES:
-            self.rules_buttons[0].draw()
-            self.drawRules()
-        pygame.display.update()
-
-    def drawLongText(self, paragraph, corner, width):
-        collection = [line.split(' ') for line in paragraph.splitlines()]
-        space = self.font.size(" ")[0]
-        x, y = corner
-        for line in collection:
-            for word in line:
-                word_draw = self.font.render(word, True, CREAM)
-                word_width, word_height = word_draw.get_size()
-                if (x + word_width) >= (corner[0] + width):
-                    x = corner[0]
-                    y += word_height
-                self.window.blit(word_draw, (x, y))
-                x += word_width + space
-            x = corner[0]
-            y += word_height
-
-    def drawRules(self):
-        # draw rules
-        rules = "Try to click the circle as fast as possible! \nAt 5/10 points, your circle will disappear faster. \nFor 20/30/40 circles, your circle will be smaller. \nAfter 50 circles, you win! \nYour score will be determined by your speed and accuracy."
-        self.drawLongText(rules, (150, HEIGHT/2 - 150), WIDTH - 300)
-        # draw example circle
-        center = (WIDTH/2, HEIGHT/2 + 170)
-        radius = 65
-        for i in range(CIRCLE_NUM, 0, -1):
-            current_radius = radius * i / CIRCLE_NUM
-            current_color = RED if i % 2 == 1 else WHITE
-            pygame.draw.circle(screen, current_color, center, current_radius)
-
-    def checkClick(self, click_pos):
-        result = None
-        if self.state == State.MENU:
-            for button in self.menu_buttons:
-                result = button.checkClick(click_pos)
-                if result != None:
-                    break
-        elif self.state == State.RULES:
-            result = self.rules_buttons[0].checkClick(click_pos)
-
-        if result != None:
-            self.state = result
-    
-    def run_menu(self):
-        self.state = State.MENU
-        while self.state == State.MENU or self.state == State.RULES:
-            self.drawAll()
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.state = State.QUIT
-                    pygame.quit()
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        click_pos = pygame.mouse.get_pos()
-                        self.checkClick(click_pos)
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.state = State.QUIT
-                        pygame.quit()
-        return self.state
-
-class State:
-    MENU = "Menu"
-    RULES = "Rules"
-    GAME = "Game"
-    PAUSING = "Pausing"
-    END_SCREEN = "End screen"
-    QUIT = "Quit"
     
 class Game:
     def __init__(self, window):
@@ -227,7 +18,8 @@ class Game:
         self.font = pygame.font.SysFont(FONT_NAME, 30, True, False)
         self.font_bigger = pygame.font.SysFont(FONT_NAME, 46, True, False)
 
-        self.target = Target()
+        self.menu = Menu(window)
+        self.target = Target(window)
         self.setup()
 
         self.return_button = Button(self.window, "X", (20, 20), (70, 70), State.MENU)
@@ -239,6 +31,13 @@ class Game:
         self.score = 0
         self.hit = 0
         self.miss = 0
+        
+    def run_all(self):
+        while main_game.state != State.QUIT:
+            state_after_menu = self.menu.run_menu()
+            self.state = state_after_menu
+            self.run_game()
+            self.run_end_screen()
     
     def startGame(self):
         self.setup()
@@ -452,11 +251,6 @@ clock = pygame.time.Clock()
 
 # init main_game
 main_game = Game(screen)
-menu = Menu(screen)
-
-while main_game.state != State.QUIT:
-    main_game.state = menu.run_menu()
-    main_game.run_game()
-    main_game.run_end_screen()
+main_game.run_all()
 
 pygame.quit()
